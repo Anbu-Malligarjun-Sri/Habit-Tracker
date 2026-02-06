@@ -1,0 +1,557 @@
+// ============================================
+// HABIT TRACKER & LIFE OS - DATABASE SCHEMA
+// Version: 2.0 - Phase 1 Implementation
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============= USER & AUTHENTICATION =============
+
+model User {
+  id              String    @id @default(cuid())
+  clerkId         String    @unique
+  email           String    @unique
+  username        String?   @unique
+  firstName       String?
+  lastName        String?
+  avatarUrl       String?
+  bio             String?
+  timezone        String    @default("UTC")
+  locale          String    @default("en")
+  
+  // Gamification
+  xp              Int       @default(0)
+  level           Int       @default(1)
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  
+  // Settings
+  preferences     Json?     @default("{}")
+  notificationSettings Json? @default("{}")
+  
+  // Subscription
+  subscriptionTier String   @default("free")
+  subscriptionEndDate DateTime?
+  
+  // Relations
+  habits          Habit[]
+  habitCompletions HabitCompletion[]
+  expenses        Expense[]
+  incomes         Income[]
+  budgets         Budget[]
+  workouts        Workout[]
+  journalEntries  JournalEntry[]
+  achievements    UserAchievement[]
+  sleepLogs       SleepLog[]
+  goals           Goal[]
+  reminders       Reminder[]
+  resources       UserResource[]
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastActiveAt    DateTime?
+  
+  @@index([clerkId])
+  @@index([email])
+}
+
+// ============= HABITS MODULE =============
+
+model Habit {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name            String
+  description     String?
+  category        String
+  icon            String    @default("📌")
+  color           String    @default("#6366F1")
+  
+  // Frequency Configuration
+  frequencyType   FrequencyType @default(DAILY)
+  frequencyDays   Int[]     @default([]) // Days of week [0-6] for SPECIFIC_DAYS
+  frequencyCount  Int?      // X times per week/month for X_TIMES_WEEK/MONTH
+  
+  // Goal Configuration
+  targetType      TargetType @default(BOOLEAN)
+  targetValue     Float?     // Target for quantity/duration/distance
+  targetUnit      String?    // e.g., "pages", "minutes", "km"
+  
+  // Difficulty & Rewards
+  difficulty      Int       @default(3) // 1-5 scale
+  xpReward        Int       @default(10)
+  
+  // Reminders
+  reminderEnabled Boolean   @default(false)
+  reminderTimes   Json?     @default("[]") // Array of time strings
+  
+  // Metadata
+  isArchived      Boolean   @default(false)
+  isPinned        Boolean   @default(false)
+  startDate       DateTime  @default(now())
+  endDate         DateTime?
+  orderIndex      Int       @default(0)
+  
+  // Relations
+  completions     HabitCompletion[]
+  goal            Goal?     @relation(fields: [goalId], references: [id])
+  goalId          String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([category])
+  @@index([isArchived])
+}
+
+enum FrequencyType {
+  DAILY
+  WEEKLY
+  SPECIFIC_DAYS
+  X_TIMES_WEEK
+  X_TIMES_MONTH
+}
+
+enum TargetType {
+  BOOLEAN     // Yes/No completion
+  QUANTITY    // Number (e.g., 10 pages)
+  DURATION    // Time (e.g., 30 minutes)
+  DISTANCE    // Distance (e.g., 5km)
+}
+
+model HabitCompletion {
+  id              String    @id @default(cuid())
+  habitId         String
+  habit           Habit     @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  date            DateTime  @db.Date
+  completed       Boolean   @default(true)
+  skipped         Boolean   @default(false)
+  
+  // For quantity/duration habits
+  value           Float?
+  notes           String?
+  qualityRating   Int?      // 1-5 rating
+  
+  // Metadata
+  completedAt     DateTime  @default(now())
+  location        Json?     // { lat, lng }
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([habitId, date])
+  @@index([userId])
+  @@index([date])
+  @@index([habitId, date])
+}
+
+// ============= FINANCE MODULE =============
+
+model Expense {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount          Decimal   @db.Decimal(12, 2)
+  currency        String    @default("USD")
+  
+  category        String
+  subcategory     String?
+  merchant        String?
+  description     String?
+  
+  date            DateTime
+  isRecurring     Boolean   @default(false)
+  recurringConfig Json?     // { frequency, endDate }
+  
+  paymentMethod   String?
+  tags            String[]  @default([])
+  attachments     Json?     // [{ url, type }]
+  
+  budgetId        String?
+  budget          Budget?   @relation(fields: [budgetId], references: [id])
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([date])
+  @@index([category])
+}
+
+model Income {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount          Decimal   @db.Decimal(12, 2)
+  currency        String    @default("USD")
+  
+  source          String
+  category        String
+  description     String?
+  
+  date            DateTime
+  isRecurring     Boolean   @default(false)
+  recurringConfig Json?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([date])
+}
+
+model Budget {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name            String
+  category        String?
+  amount          Decimal   @db.Decimal(12, 2)
+  currency        String    @default("USD")
+  
+  period          BudgetPeriod
+  startDate       DateTime
+  endDate         DateTime?
+  
+  alertThreshold  Int       @default(80) // Percentage
+  isActive        Boolean   @default(true)
+  
+  expenses        Expense[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId])
+}
+
+enum BudgetPeriod {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+// ============= FITNESS MODULE =============
+
+model Workout {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name            String
+  type            WorkoutType @default(OTHER)
+  date            DateTime
+  startTime       DateTime?
+  endTime         DateTime?
+  duration        Int?      // minutes
+  
+  caloriesBurned  Int?
+  notes           String?
+  rating          Int?      // 1-5
+  
+  exercises       WorkoutExercise[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([date])
+}
+
+enum WorkoutType {
+  STRENGTH
+  CARDIO
+  FLEXIBILITY
+  SPORTS
+  HIIT
+  YOGA
+  OTHER
+}
+
+model WorkoutExercise {
+  id              String    @id @default(cuid())
+  workoutId       String
+  workout         Workout   @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  
+  exerciseName    String
+  muscleGroup     String?
+  orderIndex      Int
+  notes           String?
+  
+  sets            ExerciseSet[]
+  
+  @@index([workoutId])
+}
+
+model ExerciseSet {
+  id              String    @id @default(cuid())
+  exerciseId      String
+  exercise        WorkoutExercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  
+  setNumber       Int
+  reps            Int?
+  weight          Decimal?  @db.Decimal(6, 2)
+  duration        Int?      // seconds
+  distance        Decimal?  @db.Decimal(10, 2)
+  rpe             Int?      // Rate of Perceived Exertion 1-10
+  
+  isWarmup        Boolean   @default(false)
+  isDropSet       Boolean   @default(false)
+  isFailure       Boolean   @default(false)
+  
+  @@index([exerciseId])
+}
+
+// ============= JOURNAL MODULE =============
+
+model JournalEntry {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  entryDate       DateTime  @db.Date
+  title           String?
+  content         String    @db.Text
+  contentFormat   String    @default("markdown")
+  
+  moodRating      Int?      // 1-10
+  moodEmoji       String?
+  energyLevel     Int?      // 1-10
+  
+  tags            String[]  @default([])
+  isPrivate       Boolean   @default(true)
+  isPinned        Boolean   @default(false)
+  
+  // AI Analysis (populated by AI service)
+  sentiment       String?   // positive, negative, neutral
+  keyTopics       String[]  @default([])
+  
+  attachments     Json?     // [{ url, type, name }]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([userId, entryDate])
+  @@index([userId])
+  @@index([entryDate])
+}
+
+model SleepLog {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  sleepDate       DateTime  @db.Date
+  bedtime         DateTime
+  wakeTime        DateTime
+  duration        Int?      // calculated minutes
+  
+  qualityRating   Int?      // 1-5
+  deepSleep       Int?      // minutes
+  remSleep        Int?      // minutes
+  
+  notes           String?
+  factors         String[]  @default([]) // caffeine, alcohol, stress, exercise
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([userId, sleepDate])
+  @@index([userId])
+}
+
+// ============= GAMIFICATION MODULE =============
+
+model Achievement {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  name            String
+  description     String
+  icon            String
+  
+  category        String
+  tier            AchievementTier
+  
+  criteriaType    String    // streak, total_completions, perfect_day, etc.
+  criteriaConfig  Json      // { threshold: 7 } for 7-day streak
+  
+  xpReward        Int
+  isSecret        Boolean   @default(false)
+  
+  users           UserAchievement[]
+  
+  @@index([category])
+  @@index([tier])
+}
+
+enum AchievementTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+  LEGENDARY
+}
+
+model UserAchievement {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId   String
+  achievement     Achievement @relation(fields: [achievementId], references: [id])
+  
+  unlockedAt      DateTime    @default(now())
+  progress        Int         @default(100) // For progress-based achievements
+  
+  @@unique([userId, achievementId])
+  @@index([userId])
+}
+
+model UserResource {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  resourceType    ResourceType
+  amount          Int       @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([userId, resourceType])
+}
+
+enum ResourceType {
+  GOLD
+  ELIXIR
+  DARK_MATTER
+  GEMS
+}
+
+// ============= GOALS MODULE =============
+
+model Goal {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title           String
+  description     String?
+  category        String
+  
+  targetType      GoalTargetType
+  targetValue     Float
+  currentValue    Float     @default(0)
+  unit            String?
+  
+  startDate       DateTime
+  endDate         DateTime
+  
+  status          GoalStatus @default(IN_PROGRESS)
+  priority        Int       @default(1) // 1-5
+  
+  milestones      Milestone[]
+  habits          Habit[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+  
+  @@index([userId])
+  @@index([status])
+}
+
+enum GoalTargetType {
+  COUNT       // Complete X times
+  STREAK      // X day streak
+  TOTAL       // Total X amount
+  PERCENTAGE  // X% completion rate
+}
+
+enum GoalStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PAUSED
+}
+
+model Milestone {
+  id              String    @id @default(cuid())
+  goalId          String
+  goal            Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  
+  title           String
+  targetValue     Float
+  isCompleted     Boolean   @default(false)
+  completedAt     DateTime?
+  
+  orderIndex      Int
+  
+  @@index([goalId])
+}
+
+// ============= REMINDERS & NOTIFICATIONS =============
+
+model Reminder {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title           String
+  message         String?
+  
+  type            ReminderType
+  referenceId     String?   // habitId, goalId, etc.
+  
+  scheduledTime   DateTime
+  repeatConfig    Json?     // { frequency, days, endDate }
+  
+  isActive        Boolean   @default(true)
+  lastSentAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([scheduledTime])
+}
+
+enum ReminderType {
+  HABIT
+  GOAL
+  CUSTOM
+  SYSTEM
+}
+
+// ============= ACTIVITY LOG =============
+
+model ActivityLog {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  action          String    // habit_completed, goal_created, achievement_unlocked, etc.
+  entityType      String    // habit, goal, achievement, etc.
+  entityId        String?
+  
+  metadata        Json?     // Additional context
+  xpEarned        Int       @default(0)
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+}
