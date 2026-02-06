@@ -89,7 +89,7 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/habitquest.git
+   git clone https://github.com/Anbu-Malligarjun-Sri/Habit-Tracker.git
    cd habitquest
    ```
 
